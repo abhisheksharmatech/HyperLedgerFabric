@@ -1,0 +1,333 @@
+#Advantages of using Managed Blockchain
+Managed Blockchain also simplifies network management tasks.
+manages your certificates, 
+lets you invite new members to join the network with a single click or command, and 
+tracks operational metrics such as compute, memory, and storage resources. 
+Can replicate an immutable copy of your blockchain network activity into Amazon QLDB, a fully managed ledger database, outside of the network. 
+This lets you efficiently analyze network activity and identify trends for insight.
+
+#Pre requisite - 
+1) An AWS account
+2) Access to the Preview
+3) A Linux Client (EC2 Instance)
+4) A VPC
+5) Permissions to Create an Interface VPC Endpoint
+6) The CLI for Managed Blockchain (Installed on the Client)
+=================================================================
+#Create network and member from aws console 
+NOTE - DONOT USE SPECIAL CHARACTER IN PASSWORD
+
+=================================================================
+#Create VPC Endpoint
+
+#create an interface VPC endpoint using the Managed Blockchain console. Make sure it has same security group as your ec2 instance has
+
+#Get VPC Endpoint service name using below command
+aws managedblockchain get-network --network-id n-PLSI2DYZ65FT5MZS46LFKSCHPU
+
+
+We recommend that the EC2 security group that you specify for the VPC endpoint is the same as the EC2 security group for the blockchain client that you create to work with the Managed Blockchain network.
+=================================================================
+#Access Keys generate from aws console- 
+Key Id - <<your apikey generated from IAM console>>
+Secret Key - <<your secretkey generated from IAM console>>
+
+#Launch an amazon linux machine using console
+Login to your ec2 instance with ssh command
+
+
+#Install aws cli on linux machine. It already installed on amazon linux ec2
+aws --version
+sudo yum update
+
+#Condfigure the aws
+aws configure
+
+AWS Access Key ID [None]: your api key
+AWS Secret Access Key [None]: your secret key
+Default region name [None]: us-east-1
+Default output format [None]: json
+
+
+
+# NOTE - Files updated when aws configure command is executed
+1) AWS credentials
+Windows - C:\Users\USERNAME\.aws\credentials
+Mac - ~/.aws/credentials
+2) Profile Configuration Settings
+Windows - C:\Users\USERNAME\.aws\config
+Mac - ~/.aws/config
+
+
+
+
+#Install Python CLI for MBC
+sudo mkdir ManageBlockchain
+sudo chmod 777 ManageBlockchain
+cd ManageBlockchain
+aws s3 cp s3://us-east-1.managedblockchain-preview/etc/service-2.json .
+
+#Command to add MBC commands in aws cli
+aws configure add-model --service-model file://service-2.json
+
+#Command to create network
+aws managedblockchain create-network --network-configuration Name='MyTestTaigaNetwork,Description=MyTaigaNetDescription,Framework=HYPERLEDGER_FABRIC,FrameworkVersion=1.2' --member-configuration 'Name=MyFirstMembersName,Description=MyDesc,FrameworkConfiguration={Fabric={AdminUsername=AdminUser,AdminPassword=Password123}}'
+
+#command to list networks
+aws managedblockchain list-networks
+
+===============================================================
+#This section is to Setup client
+
+sudo yum update -y
+sudo yum install -y telnet
+sudo yum -y install emacs
+sudo yum install -y docker
+sudo service docker start
+sudo usermod -a -G docker ec2-user
+Log out and log in again for the usermod command to take effect.
+
+#install Docker Compose
+sudo curl -L https://github.com/docker/compose/releases/download/1.20.0/docker-compose-`uname -s`-`uname -m` -o /usr/local/bin/docker-compose
+sudo chmod a+x /usr/local/bin/docker-compose
+sudo yum install libtool -y
+
+# install golang:
+wget https://dl.google.com/go/go1.10.3.linux-amd64.tar.gz
+tar -xzf go1.10.3.linux-amd64.tar.gz
+sudo mv go /usr/local
+sudo yum install libtool-ltdl-devel -y
+sudo yum install git -y
+
+#NOTE - Use a text editor to set up variables such as GOROOT and GOPATH in your ~/.bashrc or ~/.bash_profile and save the updates. The following example shows entries in .bash_profile.
+sudo vi ~/.bash_profile. -- Add below lines in the file
+
+# GOROOT is the location where Go package is installed on your system
+export GOROOT=/usr/local/go
+
+# GOPATH is the location of your work directory
+export GOPATH=$HOME/go
+
+# Update PATH so that you can access the go binary system wide
+export PATH=$GOROOT/bin:$PATH
+export PATH=$PATH:/home/ec2-user/go/src/github.com/hyperledger/fabric-ca/bin
+
+#export PATH
+
+-- file ends
+
+source ~/.bash_profile
+
+# Check installation of docker
+sudo docker version
+
+#check version of docker compose
+sudo /usr/local/bin/docker-compose version
+
+#check version of go command
+go version
+
+#Set Up the Hyperledger Fabric CA Client
+#Use the get-member command to get the CA endpoint for your member
+aws managedblockchain get-member --network-id n-PLSI2DYZ65FT5MZS46LFKSCHPU --member-id m-ZVWN5HLKABABZD4VKQ32EOFWG4
+
+#Use curl or telnet to verify that the endpoint resolves. CA endpoint you will get from above command
+curl https://ca.m-ZVWN5HLKABABZD4VKQ32EOFWG4.n-PLSI2DYZ65FT5MZS46LFKSCHPU.managedblockchain.us-east-1.amazonaws.com:30002/cainfo -k
+
+telnet https://ca.m-ZVWN5HLKABABZD4VKQ32EOFWG4.n-PLSI2DYZ65FT5MZS46LFKSCHPU.managedblockchain.us-east-1.amazonaws.com:30002
+
+#configure the CA client:
+cd ..
+go get -u github.com/hyperledger/fabric-ca/cmd/...
+cd /home/ec2-user/go/src/github.com/hyperledger/fabric-ca
+git fetch
+git checkout release-1.2
+make fabric-ca-client
+
+cd /home/ec2-user
+git clone https://github.com/hyperledger/fabric-samples.git
+
+#Configure and Run Docker Compose to Start the Hyperledger Fabric CLI
+sudo vi docker-compose-cli.yaml
+version: '2'
+services:
+  cli:
+    container_name: cli
+    image: hyperledger/fabric-tools:1.2.0
+    tty: true
+    environment:
+      - GOPATH=/opt/gopath
+      - CORE_VM_ENDPOINT=unix:///host/var/run/docker.sock
+      - CORE_LOGGING_LEVEL=info # Set logging level to debug for more verbose logging
+      - CORE_PEER_ID=cli
+      - CORE_CHAINCODE_KEEPALIVE=10
+    working_dir: /opt/gopath/src/github.com/hyperledger/fabric/peer
+    command: /bin/bash
+    volumes:
+        - /var/run/:/host/var/run/
+        - /home/ec2-user/fabric-samples/chaincode:/opt/gopath/src/github.com/
+        - /home/ec2-user:/opt/home
+
+ ------ file ends -----
+ 
+ #start the Hyperledger Fabric peer CLI container
+ docker-compose -f docker-compose-cli.yaml up -d
+==============================================================
+
+==============================================================
+#This section deals with Enroll the Member Administrator
+
+#Create the Certificate File
+aws s3 cp s3://us-east-1.managedblockchain-preview/etc/managedblockchain-tls-chain.pem  /home/ec2-user/managedblockchain-tls-chain.pem
+
+#Test if command executed successfully or not
+openssl x509 -noout -text -in /home/ec2-user/managedblockchain-tls-chain.pem
+
+aws managedblockchain get-member --network-id n-PLSI2DYZ65FT5MZS46LFKSCHPU --member-id m-ZVWN5HLKABABZD4VKQ32EOFWG4
+
+# Enroll the Member Administrator using the CA endpoint, administrator profile, and the certificate file by using the fabric-ca-client enroll command
+Sample Command - fabric-ca-client enroll -u https://AdminUsername:AdminPassword@SampleCAEndpointAndPort --tls.certfiles /home/ec2-user/managedblockchain-tls-chain.pem -M /home/ec2-user/admin-msp
+
+Note - replace the adminuser and password with your credentials which you gave while creating the member.
+
+
+# Membership Service Provider (MSP) identifies which root CAs and intermediate CAs are trusted to define the members of a trust domain. Certificates for the administrator's MSP are in $FABRIC_CA_CLIENT_HOME, which is /home/ec2-user/admin-msp in this tutorial. Because this MSP is for the member administrator, copy the certificates from signcerts to admincerts 
+cp -r admin-msp/signcerts admin-msp/admincerts
+
+===================================================================================================
+# Create a Peer Node in Your Membership - Your member's peer nodes interact with other members' peer nodes on the blockchain to query and update the ledger, and store a local copy of the ledger.
+
+aws managedblockchain create-node --network-id n-PLSI2DYZ65FT5MZS46LFKSCHPU --member-id m-ZVWN5HLKABABZD4VKQ32EOFWG4 --node-configuration InstanceType=bc.t3.small,AvailabilityZone=us-east-1a,DataVolumeSize=10
+
+#peer node takes a few minutes to provision and become healthy. You can check the node status using the get-node 
+aws managedblockchain get-node --network-id n-PLSI2DYZ65FT5MZS46LFKSCHPU --member-id m-ZVWN5HLKABABZD4VKQ32EOFWG4 --node-id nd-OWV4KVUQL5EI5OU2VW7F2GWWEU 
+
+===================================================================================================
+#Create a channel
+
+# Create configtx to define channel configuration for Hyperledger Fabric Channel Creation
+
+sudo vi configtx.yaml
+
+---- file content
+
+################################################################################
+#
+#   Section: Organizations
+#
+#   - This section defines the different organizational identities which will
+#   be referenced later in the configuration.
+#
+################################################################################
+Organizations:
+    - &Org1
+            # DefaultOrg defines the organization which is used in the sampleconfig
+            # of the fabric.git development environment
+        Name: m-ZVWN5HLKABABZD4VKQ32EOFWG4
+            # ID to load the MSP definition as
+        ID: m-ZVWN5HLKABABZD4VKQ32EOFWG4
+        MSPDir: /opt/home/admin-msp
+            # AnchorPeers defines the location of peers which can be used
+            # for cross org gossip communication.  Note, this value is only
+            # encoded in the genesis block in the Application section context    
+        AnchorPeers:    
+            - Host: 
+              Port:    
+
+################################################################################
+#
+#   SECTION: Application
+#
+#   - This section defines the values to encode into a config transaction or
+#   genesis block for application related parameters
+#
+################################################################################
+Application: &ApplicationDefaults
+        # Organizations is the list of orgs which are defined as participants on
+        # the application side of the network
+    Organizations:
+
+################################################################################
+#
+#   Profile
+#
+#   - Different configuration profiles may be encoded here to be specified
+#   as parameters to the configtxgen tool
+#
+################################################################################
+Profiles:
+    OneOrgChannel:
+        Consortium: AWSSystemConsortium
+        Application:
+            <<: *ApplicationDefaults
+            Organizations:
+                - *Org1
+
+-- file ends
+
+# generate the configtx peer block:
+docker exec cli configtxgen -outputCreateChannelTx /opt/home/mychannel.pb -profile OneOrgChannel -channelID mychannel --configPath /opt/home/
+
+# Set Environment Variables for Convenience
+export MSP_PATH=/opt/home/admin-msp
+export MSP=m-ZVWN5HLKABABZD4VKQ32EOFWG4    // your member id
+export ORDERER=orderer.n-PLSI2DYZ65FT5MZS46LFKSCHPU.managedblockchain.us-east-1.amazonaws.com:30001  //OrderingServiceEndpoint  and use this command to get it - aws managedblockchain get-network --network-id n-PLSI2DYZ65FT5MZS46LFKSCHPU
+
+export PEER=nd-OWV4KVUQL5EI5OU2VW7F2GWWEU.m-ZVWN5HLKABABZD4VKQ32EOFWG4.n-PLSI2DYZ65FT5MZS46LFKSCHPU.managedblockchain.us-east-1.amazonaws.com:30003  // PeerNodeEndpoint and use get-node command to get it
+
+# Create the channel
+docker exec -e "CORE_PEER_TLS_ENABLED=true" -e "CORE_PEER_TLS_ROOTCERT_FILE=/opt/home/managedblockchain-tls-chain.pem" -e "CORE_PEER_ADDRESS=$PEER" -e "CORE_PEER_LOCALMSPID=$MSP" -e "CORE_PEER_MSPCONFIGPATH=$MSP_PATH" cli peer channel create -c mychannel -f /opt/home/mychannel.pb -o $ORDERER --cafile /opt/home/managedblockchain-tls-chain.pem --tls
+
+#Join the channel
+docker exec -e "CORE_PEER_TLS_ENABLED=true" -e "CORE_PEER_TLS_ROOTCERT_FILE=/opt/home/managedblockchain-tls-chain.pem" -e "CORE_PEER_ADDRESS=$PEER" -e "CORE_PEER_LOCALMSPID=$MSP" -e "CORE_PEER_MSPCONFIGPATH=$MSP_PATH" cli peer channel join -b mychannel.block -o $ORDERER --cafile /opt/home/managedblockchain-tls-chain.pem --tls
+
+docker exec -e "CORE_PEER_TLS_ENABLED=true" -e "CORE_PEER_TLS_ROOTCERT_FILE=/opt/home/managedblockchain-tls-chain.pem" -e "CORE_PEER_ADDRESS=$PEER" -e "CORE_PEER_LOCALMSPID=$MSP" -e "CORE_PEER_MSPCONFIGPATH=$MSP_PATH" cli peer channel fetch 0 mychannel.block -c mychannel -o $ORDERER --cafile /opt/home/managedblockchain-tls-chain.pem --tls
+
+
+====================================================================================================
+# Install and run chaincode
+
+#Install the chaincode
+docker exec -e "CORE_PEER_TLS_ENABLED=true" -e "CORE_PEER_TLS_ROOTCERT_FILE=/opt/home/managedblockchain-tls-chain.pem" -e "CORE_PEER_LOCALMSPID=$MSP" -e "CORE_PEER_MSPCONFIGPATH=$MSP_PATH" -e "CORE_PEER_ADDRESS=$PEER" cli peer chaincode install -n mycc -v v0 -p github.com/chaincode_example02/go
+
+#Instantiate the chaincode
+docker exec -e "CORE_PEER_TLS_ENABLED=true" -e "CORE_PEER_TLS_ROOTCERT_FILE=/opt/home/managedblockchain-tls-chain.pem" -e "CORE_PEER_LOCALMSPID=$MSP" -e "CORE_PEER_MSPCONFIGPATH=$MSP_PATH" -e "CORE_PEER_ADDRESS=$PEER" cli peer chaincode instantiate -o $ORDERER -C mychannel -n mycc -v v0 -c '{"Args":["init","a","100","b","200"]}' --cafile /opt/home/managedblockchain-tls-chain.pem --tls
+
+# Verify the instantiation
+docker exec -e "CORE_PEER_TLS_ENABLED=true" -e "CORE_PEER_TLS_ROOTCERT_FILE=/opt/home/managedblockchain-tls-chain.pem" -e "CORE_PEER_LOCALMSPID=$MSP" -e  "CORE_PEER_MSPCONFIGPATH=$MSP_PATH" -e "CORE_PEER_ADDRESS=$PEER"  cli peer chaincode list --instantiated -o $ORDERER -C mychannel --cafile /opt/home/managedblockchain-tls-chain.pem --tls
+===================================================================================================
+
+# Invite other accounts to join as member
+aws managedblockchain create-network-invitation --network-id n-PLSI2DYZ65FT5MZS46LFKSCHPU --invitee-account-id 123456789012     // account id of the member
+
+#Set Up an Additional Member
+aws managedblockchain create-member --network-id n-PLSI2DYZ65FT5MZS46LFKSCHPU --member-configuration 'Name=SamOrg2,Description=MyMemberDesc,FrameworkConfiguration={Fabric={AdminUsername=sambhav,AdminPassword=Newuser123}}'       // created memberid - m-OSIJX2TAVVDADAPWD2MYLVLIYY
+
+
+
+
+
+# Issues debugging
+
+1) Failed verifying that proposal's creator satisfies local MSP principal during channelless check policy with policy
+Sol - Run the enroll member admin command again to enroll your node as admin. Also don't run the docker command with sudo
+
+2) error proposal failed (err bad proposal response 500)
+Sol - Use below command to join the channel. we need the first block to join (sequence number 0), not the newest or config
+docker exec -e "CORE_PEER_TLS_ENABLED=true" -e "CORE_PEER_TLS_ROOTCERT_FILE=/opt/home/managedblockchain-tls-chain.pem" -e "CORE_PEER_ADDRESS=$PEER" -e "CORE_PEER_LOCALMSPID=$MSP" -e "CORE_PEER_MSPCONFIGPATH=$MSP_PATH" cli peer channel fetch 0 mychannel.block -c mychannel -o $ORDERER --cafile /opt/home/managedblockchain-tls-chain.pem --tls
+
+3) error endorsing chaincode: rpc error
+Sol
+===================================================================================================
+Key Urls for training
+https://pages.awscloud.com/AmazonManagedBlockchain-preview.html
+https://aws.amazon.com/managed-blockchain/pricing/
+https://docs.aws.amazon.com/cli/latest/userguide/install-macos.html
+https://docs.aws.amazon.com/vpc/latest/userguide/working-with-vpcs.html
+
+
+
+
+
+
+organization --> members in mbc
